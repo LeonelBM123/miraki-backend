@@ -1,0 +1,15 @@
+Django>=5.0,<5.3
+djangorestframework
+djangorestframework-gis
+djangorestframework-simplejwt
+psycopg2-binary
+django-environ
+django-cors-headers
+django-filter
+drf-spectacular
+django-extensions
+celery
+django-celery-beat
+redis
+Pillow
+gunicorn
