@@ -3,8 +3,11 @@ from rest_framework import generics, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+
+from apps.common.mixins import AuditViewSetMixin
 
 from .models import BitacoraAcceso, Rol
 from .serializers import (
@@ -20,14 +23,22 @@ from .utils import get_client_ip, get_user_agent
 Usuario = get_user_model()
 
 
-class RolViewSet(viewsets.ModelViewSet):
+class RolViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Rol.objects.all()
     serializer_class = RolSerializer
 
 
-class UsuarioViewSet(viewsets.ModelViewSet):
+class UsuarioViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
+
+
+class MeView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response(UsuarioSerializer(request.user).data)
 
 
 class BitacoraAccesoViewSet(viewsets.ReadOnlyModelViewSet):
@@ -37,11 +48,13 @@ class BitacoraAccesoViewSet(viewsets.ReadOnlyModelViewSet):
 
 class LoginView(TokenObtainPairView):
     serializer_class = BitacoraTokenObtainPairSerializer
+    throttle_scope = 'auth'
 
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'auth'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

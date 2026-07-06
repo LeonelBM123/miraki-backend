@@ -2,7 +2,7 @@ from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 
-from apps.common.models import AuditMixin
+from apps.common.models import AuditMixin, PublicIdMixin
 
 
 class Rol(models.Model):
@@ -55,8 +55,11 @@ class UsuarioManager(BaseUserManager):
             extra_fields['id_rol'] = rol_super_admin
         return self._create_user(correo, password, **extra_fields)
 
+    def get_by_public_id(self, public_id):
+        return self.get(public_id=public_id)
 
-class Usuario(AbstractBaseUser, PermissionsMixin, AuditMixin):
+
+class Usuario(AbstractBaseUser, PermissionsMixin, PublicIdMixin, AuditMixin):
     """
     AUTH_USER_MODEL del proyecto. No existe columna ``password_salt``: el
     hash de contraseñas de Django (PBKDF2) ya embebe el salt en ``password``.

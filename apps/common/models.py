@@ -1,5 +1,14 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
+
+
+class PublicIdMixin(models.Model):
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_column='public_id')
+
+    class Meta:
+        abstract = True
 
 
 class AuditMixin(models.Model):

@@ -1,5 +1,8 @@
+import json
+import logging
 from datetime import timedelta
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 
 import environ
 
@@ -9,6 +12,25 @@ env = environ.Env(
     DEBUG=(bool, False),
 )
 environ.Env.read_env(BASE_DIR / '.env')
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        payload = {
+            'timestamp': self.formatTime(record, self.datefmt),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+        }
+        if record.exc_info:
+            payload['exception'] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+class EnsuringRotatingFileHandler(RotatingFileHandler):
+    def __init__(self, filename, *args, **kwargs):
+        Path(filename).parent.mkdir(parents=True, exist_ok=True)
+        super().__init__(filename, *args, **kwargs)
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
@@ -99,6 +121,16 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': env('THROTTLE_ANON_RATE', default='5/min'),
+        'user': env('THROTTLE_USER_RATE', default='100/hour'),
+        'auth': env('THROTTLE_AUTH_RATE', default='10/min'),
+    },
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
@@ -108,6 +140,39 @@ REST_FRAMEWORK = {
         'django_filters.rest_framework.DjangoFilterBackend',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'json': {
+            '()': 'config.settings.base.JsonFormatter',
+        },
+    },
+    'handlers': {
+        'auth_file': {
+            'class': 'config.settings.base.EnsuringRotatingFileHandler',
+            'filename': env('AUTH_LOG_FILE', default=str(BASE_DIR / 'logs' / 'auth.log')),
+            'maxBytes': env.int('AUTH_LOG_MAX_BYTES', default=1_048_576),
+            'backupCount': env.int('AUTH_LOG_BACKUP_COUNT', default=5),
+            'formatter': 'json',
+            'level': env('AUTH_LOG_LEVEL', default='INFO'),
+            'encoding': 'utf-8',
+        },
+    },
+    'loggers': {
+        'auth': {
+            'handlers': ['auth_file'],
+            'level': env('AUTH_LOG_LEVEL', default='INFO'),
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['auth_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
 }
 
 SIMPLE_JWT = {
