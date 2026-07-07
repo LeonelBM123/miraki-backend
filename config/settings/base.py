@@ -61,6 +61,10 @@ INSTALLED_APPS = [
 
     'apps.common',
     'apps.accounts',
+    'apps.institutions',
+    'apps.children',
+    'apps.audit',
+    'apps.zones',
 ]
 
 MIDDLEWARE = [
@@ -119,7 +123,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'apps.accounts.authentication.CookieJWTAuthentication',
     ),
     'DEFAULT_THROTTLE_CLASSES': (
         'rest_framework.throttling.AnonRateThrottle',
@@ -193,7 +197,17 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
-CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOW_CREDENTIALS = True
+# Si no se define CSRF_TRUSTED_ORIGINS, hereda automáticamente los orígenes de CORS
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=CORS_ALLOWED_ORIGINS)
+
+JWT_ACCESS_COOKIE_NAME = env('JWT_ACCESS_COOKIE_NAME', default='miraki_access')
+JWT_REFRESH_COOKIE_NAME = env('JWT_REFRESH_COOKIE_NAME', default='miraki_refresh')
+JWT_COOKIE_SECURE = env.bool('JWT_COOKIE_SECURE', default=False)
+JWT_COOKIE_SAMESITE = env('JWT_COOKIE_SAMESITE', default='Lax')
+JWT_COOKIE_DOMAIN = env('JWT_COOKIE_DOMAIN', default=None)
+JWT_COOKIE_PATH = env('JWT_COOKIE_PATH', default='/')
+JWT_COOKIE_HTTPONLY = True
 
 CELERY_BROKER_URL = env('REDIS_URL', default='redis://redis:6379/0')
 CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://redis:6379/0')

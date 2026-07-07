@@ -4,11 +4,14 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import BitacoraAcceso, Rol
-from .utils import get_client_ip, get_user_agent
+from apps.institutions.serializers import AdminCentroResponseSerializer
+
+from .models import BitacoraAcceso, Rol, Tutor
+from .services.auth import authenticate_login
 
 Usuario = get_user_model()
 
@@ -35,6 +38,26 @@ class UsuarioSerializer(serializers.ModelSerializer):
         # never exposed via API per django-security skill.
 
 
+class UsuarioAuthResponseSerializer(serializers.ModelSerializer):
+    rol = serializers.CharField(source='id_rol.nombre_rol', read_only=True)
+
+    class Meta:
+        model = Usuario
+        fields = ['id_usuario', 'correo', 'rol']
+        read_only_fields = fields
+
+
+class LoginResponseSerializer(serializers.Serializer):
+    usuario = UsuarioAuthResponseSerializer(read_only=True)
+
+
+class TutorResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tutor
+        fields = ['id_tutor', 'nombre', 'telefono', 'activo']
+        read_only_fields = fields
+
+
 class BitacoraAccesoSerializer(serializers.ModelSerializer):
     class Meta:
         model = BitacoraAcceso
@@ -42,27 +65,51 @@ class BitacoraAccesoSerializer(serializers.ModelSerializer):
         read_only_fields = [f.name for f in BitacoraAcceso._meta.fields]
 
 
-class RegisterSerializer(serializers.Serializer):
-    """
-    Registro de un Usuario nuevo (rol 'Tutor' por defecto).
+class CentroRegistroSerializer(serializers.Serializer):
+    nombre = serializers.CharField(max_length=150)
+    direccion = serializers.CharField()
 
-    # TODO: cuando exista apps.tutores, crear aquí también el Tutor asociado
-    # (nombre/telefono) en la misma transacción, tal como pide el prompt original.
-    """
+
+class RegisterAccountRequestSerializer(serializers.Serializer):
+    TIPO_TUTOR = 'tutor'
+    TIPO_ADMIN_CENTRO = 'admin_centro'
+    TIPO_CUENTA_CHOICES = [
+        (TIPO_TUTOR, 'Tutor'),
+        (TIPO_ADMIN_CENTRO, 'AdminCentro'),
+    ]
 
     correo = serializers.EmailField()
     password = serializers.CharField(write_only=True, validators=[validate_password])
+    confirmar_password = serializers.CharField(write_only=True)
+    tipo_cuenta = serializers.ChoiceField(choices=TIPO_CUENTA_CHOICES)
+    nombre = serializers.CharField(max_length=150)
+    telefono = serializers.CharField(max_length=20)
+    centro = CentroRegistroSerializer(required=False)
 
     def validate_correo(self, value):
         if Usuario.objects.filter(correo__iexact=value).exists():
             raise serializers.ValidationError('Ya existe un usuario con este correo.')
         return value
 
-    def create(self, validated_data):
-        return Usuario.objects.create_user(
-            correo=validated_data['correo'],
-            password=validated_data['password'],
-        )
+    def validate(self, attrs):
+        if attrs['password'] != attrs['confirmar_password']:
+            raise serializers.ValidationError({'confirmar_password': 'Las contraseñas no coinciden.'})
+        if attrs['tipo_cuenta'] == self.TIPO_ADMIN_CENTRO and not attrs.get('centro'):
+            raise serializers.ValidationError({'centro': 'Los datos del centro son obligatorios.'})
+        return attrs
+
+
+class RegisterResponseSerializer(serializers.Serializer):
+    usuario = UsuarioAuthResponseSerializer(read_only=True)
+    tipo_cuenta = serializers.CharField(read_only=True)
+    perfil = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DictField)
+    def get_perfil(self, obj):
+        perfil = obj['perfil']
+        if obj['tipo_cuenta'] == RegisterAccountRequestSerializer.TIPO_TUTOR:
+            return TutorResponseSerializer(perfil).data
+        return AdminCentroResponseSerializer(perfil).data
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -85,54 +132,23 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class BitacoraTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """TokenObtainPairSerializer que registra cada intento en BitacoraAcceso."""
-
-    max_failed_attempts = 5
-    lockout_minutes = 15
-    failure_message = 'Credenciales inválidas.'
-
-    def _get_usuario(self, correo):
-        if not correo:
-            return None
-        return Usuario.objects.filter(correo__iexact=correo).first()
-
-    def _log_access(self, request, correo_intento, tipo_evento, usuario=None):
-        BitacoraAcceso.objects.create(
-            id_usuario=usuario,
-            correo_intento=correo_intento,
-            tipo_evento=tipo_evento,
-            direccion_ip=get_client_ip(request),
-            user_agent=get_user_agent(request),
-        )
-
-    def _mark_failure(self, usuario, request, correo_intento):
-        if usuario is not None:
-            usuario.intentos_fallidos += 1
-            if usuario.intentos_fallidos >= self.max_failed_attempts:
-                usuario.bloqueado_hasta = timezone.now() + timedelta(minutes=self.lockout_minutes)
-            usuario.save(update_fields=['intentos_fallidos', 'bloqueado_hasta'])
-        self._log_access(request, correo_intento, 'login_fallido', usuario=usuario)
-        raise AuthenticationFailed(self.failure_message)
-
-    def _mark_success(self, usuario, request, correo_intento):
-        usuario.intentos_fallidos = 0
-        usuario.bloqueado_hasta = None
-        usuario.save(update_fields=['intentos_fallidos', 'bloqueado_hasta'])
-        self._log_access(request, correo_intento, 'login_exitoso', usuario=usuario)
+    """TokenObtainPairSerializer compatible con SimpleJWT y bloqueo de cuenta."""
 
     def validate(self, attrs):
         request = self.context.get('request')
-        correo_intento = attrs.get(self.username_field, '')
-        usuario = self._get_usuario(correo_intento)
+        return authenticate_login(
+            correo=attrs.get(self.username_field, ''),
+            password=attrs.get('password', ''),
+            request=request,
+        )
 
-        if usuario and usuario.bloqueado_hasta and usuario.bloqueado_hasta > timezone.now():
-            self._log_access(request, correo_intento, 'login_fallido', usuario=usuario)
-            raise AuthenticationFailed(self.failure_message)
 
-        try:
-            data = super().validate(attrs)
-        except Exception:
-            self._mark_failure(usuario, request, correo_intento)
+class LogoutRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField(required=False)
 
-        self._mark_success(self.user, request, correo_intento)
-        return data
+
+class DetailResponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+
+
+RegisterSerializer = RegisterAccountRequestSerializer

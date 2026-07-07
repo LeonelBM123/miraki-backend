@@ -93,6 +93,25 @@ class Usuario(AbstractBaseUser, PermissionsMixin, PublicIdMixin, AuditMixin):
         return self.correo
 
 
+class Tutor(AuditMixin):
+    id_tutor = models.AutoField(primary_key=True, db_column='id_tutor')
+    id_usuario = models.OneToOneField(
+        Usuario,
+        on_delete=models.PROTECT,
+        db_column='id_usuario',
+        related_name='tutor',
+    )
+    nombre = models.CharField(max_length=150, db_column='nombre')
+    telefono = models.CharField(max_length=20, db_column='telefono')
+    activo = models.BooleanField(default=True, db_column='activo')
+
+    class Meta:
+        db_table = 'tutor'
+
+    def __str__(self):
+        return self.nombre
+
+
 class BitacoraAcceso(models.Model):
     TIPO_EVENTO_CHOICES = [
         ('login_exitoso', 'Login exitoso'),

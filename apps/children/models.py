@@ -1,0 +1,27 @@
+from django.db import models
+
+from apps.accounts.models import Tutor
+from apps.common.models import AuditMixin
+
+
+class Nino(AuditMixin):
+    id_nino = models.AutoField(primary_key=True, db_column='id_nino')
+    nombre = models.CharField(max_length=150, db_column='nombre')
+    fecha_nacimiento = models.DateField(null=True, blank=True, db_column='fecha_nacimiento')
+    foto_url = models.CharField(max_length=300, null=True, blank=True, db_column='foto_url')
+    id_tutor = models.ForeignKey(
+        Tutor,
+        on_delete=models.PROTECT,
+        db_column='id_tutor',
+        related_name='ninos',
+    )
+    activo = models.BooleanField(default=True, db_column='activo')
+
+    class Meta:
+        db_table = 'nino'
+        indexes = [
+            models.Index(fields=['id_tutor'], name='ix_nino_tutor'),
+        ]
+
+    def __str__(self):
+        return self.nombre
