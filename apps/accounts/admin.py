@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import BitacoraAcceso, Rol, Usuario
+from .models import BitacoraAcceso, Rol, Tutor, Usuario
 
 
 @admin.register(Rol)
@@ -45,3 +45,10 @@ class BitacoraAccesoAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(Tutor)
+class TutorAdmin(admin.ModelAdmin):
+    list_display = ['id_tutor', 'nombre', 'telefono', 'id_usuario', 'activo']
+    list_filter = ['activo']
+    search_fields = ['nombre', 'telefono', 'id_usuario__correo']
