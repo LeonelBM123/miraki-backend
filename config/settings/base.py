@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'apps.institutions',
     'apps.children',
     'apps.audit',
+    'apps.zones',
 ]
 
 MIDDLEWARE = [
@@ -132,6 +133,7 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
 CORS_ALLOW_CREDENTIALS = True
+# Si no se define CSRF_TRUSTED_ORIGINS, hereda automáticamente los orígenes de CORS
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=CORS_ALLOWED_ORIGINS)
 
 JWT_ACCESS_COOKIE_NAME = env('JWT_ACCESS_COOKIE_NAME', default='miraki_access')
