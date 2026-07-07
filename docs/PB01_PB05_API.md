@@ -2,11 +2,30 @@
 
 Prefijo base: `/api/v1/`
 
+El frontend debe usar `credentials: "include"` en todas las llamadas. Los JWT se transportan en cookies HttpOnly:
+
+- access: `miraki_access`
+- refresh: `miraki_refresh`
+
+Redux debe guardar solo usuario/estado, no tokens. Para requests mutables con cookies, enviar `X-CSRFToken` usando la cookie `csrftoken`.
+
 ## Auth
+
+### GET `/auth/csrf/`
+
+Inicializa la cookie CSRF para que React pueda leer `csrftoken`.
+
+Respuesta `200`:
+
+```json
+{
+  "detail": "CSRF cookie initialized."
+}
+```
 
 ### POST `/auth/register/`
 
-Registra una cuenta publica de tipo `tutor` o `admin_centro`. No inicia sesion y no devuelve tokens.
+Registra una cuenta publica de tipo `tutor` o `admin_centro`. No inicia sesion, no establece cookies JWT y no devuelve tokens.
 
 Tutor:
 
@@ -59,6 +78,8 @@ Respuesta `201`:
 
 ### POST `/auth/login/`
 
+Request:
+
 ```json
 {
   "correo": "tutor@email.com",
@@ -70,8 +91,6 @@ Respuesta `200`:
 
 ```json
 {
-  "refresh": "...",
-  "access": "...",
   "usuario": {
     "id_usuario": 1,
     "correo": "tutor@email.com",
@@ -80,17 +99,41 @@ Respuesta `200`:
 }
 ```
 
-Registra `login_exitoso` o `login_fallido` en `BitacoraAcceso`. Al quinto fallo bloquea la cuenta durante 15 minutos.
+El backend establece `miraki_access` y `miraki_refresh` como cookies HttpOnly. La respuesta no expone JWT. Registra `login_exitoso` o `login_fallido` en `BitacoraAcceso`; al quinto fallo bloquea la cuenta durante 15 minutos.
 
-### POST `/auth/logout/`
+### GET `/auth/me/`
 
-Requiere `Authorization: Bearer <access>`.
+Requiere cookie `miraki_access` valida.
+
+Respuesta `200`:
 
 ```json
 {
-  "refresh": "..."
+  "id_usuario": 1,
+  "correo": "tutor@email.com",
+  "rol": "Tutor"
 }
 ```
+
+Sin access cookie valida responde `401`.
+
+### POST `/auth/refresh/`
+
+Lee `miraki_refresh` desde cookie HttpOnly. No requiere refresh en body para el frontend normal.
+
+Respuesta `200`:
+
+```json
+{
+  "detail": "Token renovado correctamente."
+}
+```
+
+El backend reemplaza la cookie `miraki_access`. Como `ROTATE_REFRESH_TOKENS=True`, tambien reemplaza `miraki_refresh` cuando SimpleJWT emite refresh nuevo.
+
+### POST `/auth/logout/`
+
+Requiere cookie `miraki_access` valida. Lee `miraki_refresh` desde cookie, intenta blacklistearlo, limpia ambas cookies y registra logout.
 
 Respuesta `200`:
 
@@ -102,7 +145,7 @@ Respuesta `200`:
 
 ## Ninos
 
-Todos los endpoints requieren usuario autenticado con rol `Tutor`.
+Todos los endpoints requieren usuario autenticado con rol `Tutor`. La autenticacion normal viene de cookie `miraki_access`.
 
 ### GET `/children/ninos/`
 
@@ -156,3 +199,27 @@ Reactivacion: `activo=true`.
 - `Bitacora`: registro de cuenta, perfiles, centros y cambios de ninos.
 - `/api/v1/accounts/bitacora-accesos/`: solo `SuperAdmin`.
 - `/api/v1/audit/bitacora/`: solo `SuperAdmin`.
+
+## RTK Query
+
+Configuracion base esperada:
+
+```ts
+fetchBaseQuery({
+  baseUrl: import.meta.env.VITE_API_URL,
+  credentials: "include",
+  prepareHeaders: (headers) => {
+    const csrf = readCookie("csrftoken")
+    if (csrf) headers.set("X-CSRFToken", csrf)
+    return headers
+  },
+})
+```
+
+Bootstrap recomendado:
+
+1. `GET /auth/csrf/`
+2. `GET /auth/me/`
+3. si `/me/` responde `401`, llamar `POST /auth/refresh/`
+4. si refresh responde `200`, reintentar `/auth/me/`
+5. si vuelve a fallar, estado `unauthenticated`

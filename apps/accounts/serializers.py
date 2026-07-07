@@ -40,6 +40,10 @@ class UsuarioAuthResponseSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class LoginResponseSerializer(serializers.Serializer):
+    usuario = UsuarioAuthResponseSerializer(read_only=True)
+
+
 class TutorResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tutor
@@ -133,7 +137,11 @@ class BitacoraTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class LogoutRequestSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
+    refresh = serializers.CharField(required=False)
+
+
+class DetailResponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
 
 
 RegisterSerializer = RegisterAccountRequestSerializer

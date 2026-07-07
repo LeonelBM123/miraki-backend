@@ -1,11 +1,12 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.test import RequestFactory, TestCase
-from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import BitacoraAcceso, Rol, Tutor
@@ -136,16 +137,20 @@ class LoginLogoutTests(APITestCase):
             id_rol=self.rol,
         )
 
-    def test_login_success_returns_tokens_user_and_access_audit(self):
+    def test_login_success_sets_httponly_cookies_without_exposing_tokens(self):
         response = self.client.post('/api/v1/auth/login/', {
             'correo': 'login@example.com',
             'password': 'StrongPass123!',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        self.assertNotIn('access', response.data)
+        self.assertNotIn('refresh', response.data)
         self.assertEqual(response.data['usuario']['rol'], 'Tutor')
+        self.assertIn(settings.JWT_ACCESS_COOKIE_NAME, response.cookies)
+        self.assertIn(settings.JWT_REFRESH_COOKIE_NAME, response.cookies)
+        self.assertTrue(response.cookies[settings.JWT_ACCESS_COOKIE_NAME]['httponly'])
+        self.assertTrue(response.cookies[settings.JWT_REFRESH_COOKIE_NAME]['httponly'])
         self.usuario.refresh_from_db()
         self.assertEqual(self.usuario.intentos_fallidos, 0)
         self.assertIsNone(self.usuario.bloqueado_hasta)
@@ -198,12 +203,70 @@ class LoginLogoutTests(APITestCase):
 
     def test_logout_blacklists_refresh_and_audits(self):
         refresh = RefreshToken.for_user(self.usuario)
-        self.client.force_authenticate(self.usuario)
+        self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = str(refresh.access_token)
+        self.client.cookies[settings.JWT_REFRESH_COOKIE_NAME] = str(refresh)
 
-        response = self.client.post('/api/v1/auth/logout/', {'refresh': str(refresh)}, format='json')
+        response = self.client.post('/api/v1/auth/logout/', {}, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(BlacklistedToken.objects.count(), 1)
         self.assertEqual(BitacoraAcceso.objects.filter(tipo_evento='logout', id_usuario=self.usuario).count(), 1)
+        self.assertEqual(response.cookies[settings.JWT_ACCESS_COOKIE_NAME].value, '')
+        self.assertEqual(response.cookies[settings.JWT_REFRESH_COOKIE_NAME].value, '')
+
+    def test_me_requires_access_cookie_and_returns_public_user(self):
+        anonymous = self.client.get('/api/v1/auth/me/')
+        self.assertEqual(anonymous.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        refresh = RefreshToken.for_user(self.usuario)
+        self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = str(refresh.access_token)
+        response = self.client.get('/api/v1/auth/me/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {
+            'id_usuario': self.usuario.id_usuario,
+            'correo': 'login@example.com',
+            'rol': 'Tutor',
+        })
+
+    def test_refresh_uses_refresh_cookie_and_rotates_cookies(self):
+        refresh = RefreshToken.for_user(self.usuario)
+        self.client.cookies[settings.JWT_REFRESH_COOKIE_NAME] = str(refresh)
+
+        response = self.client.post('/api/v1/auth/refresh/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['detail'], 'Token renovado correctamente.')
+        self.assertIn(settings.JWT_ACCESS_COOKIE_NAME, response.cookies)
+        self.assertIn(settings.JWT_REFRESH_COOKIE_NAME, response.cookies)
+
+    def test_refresh_without_cookie_returns_401(self):
+        response = self.client.post('/api/v1/auth/refresh/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_cookie_authenticated_mutation_requires_csrf_when_checks_are_enforced(self):
+        csrf_client = APIClient(enforce_csrf_checks=True)
+        csrf_response = csrf_client.get('/api/v1/auth/csrf/')
+        csrf_token = csrf_response.cookies['csrftoken'].value
+
+        missing_csrf = csrf_client.post('/api/v1/auth/login/', {
+            'correo': 'login@example.com',
+            'password': 'StrongPass123!',
+        }, format='json')
+        self.assertEqual(missing_csrf.status_code, status.HTTP_403_FORBIDDEN)
+
+        login = csrf_client.post('/api/v1/auth/login/', {
+            'correo': 'login@example.com',
+            'password': 'StrongPass123!',
+        }, format='json', HTTP_X_CSRFTOKEN=csrf_token)
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+
+        without_header = csrf_client.post('/api/v1/auth/logout/', {}, format='json')
+        self.assertEqual(without_header.status_code, status.HTTP_403_FORBIDDEN)
+
+        logout = csrf_client.post('/api/v1/auth/logout/', {}, format='json', HTTP_X_CSRFTOKEN=csrf_token)
+        self.assertEqual(logout.status_code, status.HTTP_200_OK)
 
 
 class SuperuserTests(TestCase):

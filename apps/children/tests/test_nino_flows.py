@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -6,6 +7,7 @@ from rest_framework.test import APITestCase
 from apps.accounts.models import Rol, Tutor
 from apps.audit.models import Bitacora
 from apps.children.models import Nino
+from rest_framework_simplejwt.tokens import RefreshToken
 
 Usuario = get_user_model()
 
@@ -99,3 +101,12 @@ class NinoFlowTests(APITestCase):
             self.client.post(f'/api/v1/children/ninos/{other.pk}/deactivate/').status_code,
             status.HTTP_404_NOT_FOUND,
         )
+
+    def test_cookie_authenticated_tutor_can_use_children_endpoints(self):
+        refresh = RefreshToken.for_user(self.user_a)
+        self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = str(refresh.access_token)
+
+        response = self.client.post('/api/v1/children/ninos/', {'nombre': 'Cookie Kid'}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Nino.objects.get(nombre='Cookie Kid').id_tutor, self.tutor_a)

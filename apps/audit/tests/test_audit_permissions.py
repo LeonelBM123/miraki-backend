@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import BitacoraAcceso, Rol
 from apps.audit.models import Bitacora
@@ -38,3 +40,13 @@ class AuditPermissionTests(APITestCase):
         self.client.force_authenticate(self.superuser)
         self.assertEqual(self.client.get('/api/v1/audit/bitacora/').status_code, status.HTTP_200_OK)
         self.assertEqual(self.client.get('/api/v1/accounts/bitacora-accesos/').status_code, status.HTTP_200_OK)
+
+    def test_cookie_auth_preserves_audit_permissions(self):
+        tutor_refresh = RefreshToken.for_user(self.tutor)
+        self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = str(tutor_refresh.access_token)
+        self.assertEqual(self.client.get('/api/v1/audit/bitacora/').status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.cookies.clear()
+        super_refresh = RefreshToken.for_user(self.superuser)
+        self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = str(super_refresh.access_token)
+        self.assertEqual(self.client.get('/api/v1/audit/bitacora/').status_code, status.HTTP_200_OK)
