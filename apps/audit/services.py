@@ -28,6 +28,8 @@ def serialize_instance(instance):
         value = getattr(instance, field.name)
         if field.is_relation and value is not None:
             data[field.name] = getattr(value, value._meta.pk.name)
+        elif hasattr(value, 'geojson') and value is not None:
+            data[field.name] = json.loads(value.geojson)
         elif isinstance(value, Decimal):
             data[field.name] = str(value)
         else:
