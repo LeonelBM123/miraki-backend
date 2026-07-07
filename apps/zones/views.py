@@ -6,8 +6,20 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsTutor
 
 from .models import ZonaSegura
-from .serializers import ZonaSeguraReadSerializer, ZonaSeguraUpdateSerializer, ZonaSeguraWriteSerializer
-from .services import create_zona, set_zona_active, update_zona
+from .serializers import (
+    HorarioZonaSerializer,
+    ZonaSeguraReadSerializer,
+    ZonaSeguraUpdateSerializer,
+    ZonaSeguraWriteSerializer,
+)
+from .services import (
+    create_zona,
+    desactivar_nino_zona,
+    set_zona_active,
+    sync_horarios_zona,
+    update_zona,
+    vincular_nino_zona,
+)
 
 
 class ZonaSeguraViewSet(
@@ -19,7 +31,7 @@ class ZonaSeguraViewSet(
 ):
     queryset = ZonaSegura.objects.none()
     permission_classes = [IsTutor]
-    http_method_names = ['get', 'post', 'patch', 'head', 'options']
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
@@ -71,4 +83,62 @@ class ZonaSeguraViewSet(
     def reactivate(self, request, pk=None):
         zona = self.get_object()
         zona = set_zona_active(zona=zona, user=request.user, active=True, request=request)
+        return Response(ZonaSeguraReadSerializer(zona).data)
+
+    @extend_schema(
+        request=HorarioZonaSerializer(many=True),
+        responses={200: ZonaSeguraReadSerializer},
+    )
+    @action(detail=True, methods=['put'])
+    def horarios(self, request, pk=None):
+        zona = self.get_object()
+        if not isinstance(request.data, list):
+            return Response(
+                {'detail': 'Se espera una lista de horarios.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = HorarioZonaSerializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        sync_horarios_zona(
+            zona=zona,
+            user=request.user,
+            horarios_data=serializer.validated_data,
+            request=request,
+        )
+        return Response(ZonaSeguraReadSerializer(zona).data)
+
+    @extend_schema(responses={200: ZonaSeguraReadSerializer})
+    @action(detail=True, methods=['post'])
+    def vincular_nino(self, request, pk=None):
+        zona = self.get_object()
+        id_nino = request.data.get('id_nino')
+        if not id_nino:
+            return Response(
+                {'detail': 'El campo id_nino es requerido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        vincular_nino_zona(
+            zona=zona,
+            id_nino=id_nino,
+            user=request.user,
+            request=request,
+        )
+        return Response(ZonaSeguraReadSerializer(zona).data)
+
+    @extend_schema(responses={200: ZonaSeguraReadSerializer})
+    @action(detail=True, methods=['post'])
+    def desactivar_nino(self, request, pk=None):
+        zona = self.get_object()
+        id_nino = request.data.get('id_nino')
+        if not id_nino:
+            return Response(
+                {'detail': 'El campo id_nino es requerido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        desactivar_nino_zona(
+            zona=zona,
+            id_nino=id_nino,
+            user=request.user,
+            request=request,
+        )
         return Response(ZonaSeguraReadSerializer(zona).data)
