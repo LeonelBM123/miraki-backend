@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsTutor
@@ -12,7 +13,14 @@ from .serializers import (
     NinoReadSerializer,
     NinoUpdateRequestSerializer,
 )
-from .services import assign_nino_center, create_nino, remove_nino_center, set_nino_active, update_nino
+from .services import (
+    assign_nino_center,
+    create_nino,
+    remove_nino_center,
+    remove_nino_photo,
+    set_nino_active,
+    update_nino,
+)
 
 
 class NinoViewSet(
@@ -24,6 +32,7 @@ class NinoViewSet(
 ):
     queryset = Nino.objects.none()
     permission_classes = [IsTutor]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
 
     def get_queryset(self):
@@ -102,4 +111,11 @@ class NinoViewSet(
     def remove_center(self, request, pk=None):
         nino = self.get_object()
         nino = remove_nino_center(nino=nino, user=request.user, request=request)
+        return Response(NinoReadSerializer(nino).data)
+
+    @extend_schema(responses={200: NinoReadSerializer})
+    @action(detail=True, methods=['post'], url_path='remove-photo')
+    def remove_photo(self, request, pk=None):
+        nino = self.get_object()
+        nino = remove_nino_photo(nino=nino, user=request.user, request=request)
         return Response(NinoReadSerializer(nino).data)

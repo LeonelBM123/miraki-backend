@@ -10,6 +10,7 @@ class Nino(AuditMixin):
     nombre = models.CharField(max_length=150, db_column='nombre')
     fecha_nacimiento = models.DateField(null=True, blank=True, db_column='fecha_nacimiento')
     foto_url = models.CharField(max_length=300, null=True, blank=True, db_column='foto_url')
+    foto_public_id = models.CharField(max_length=255, null=True, blank=True, db_column='foto_public_id')
     id_tutor = models.ForeignKey(
         Tutor,
         on_delete=models.PROTECT,
