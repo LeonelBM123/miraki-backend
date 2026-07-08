@@ -245,3 +245,19 @@ CELERY_TIMEZONE = TIME_ZONE
 # la alerta con cada reporte mientras la batería siga baja.
 BATERIA_UMBRAL_ALERTA = env.int('BATERIA_UMBRAL_ALERTA', default=15)
 BATERIA_DEDUP_HORAS = env.int('BATERIA_DEDUP_HORAS', default=6)
+
+# ── Firebase Admin SDK ──────────────────────────────────────────────────
+# Para push notifications. Espera la variable GOOGLE_APPLICATION_CREDENTIALS
+# apuntando al JSON de clave privada de servicio de Firebase.
+FIREBASE_CREDENTIALS = env('GOOGLE_APPLICATION_CREDENTIALS', default='')
+if FIREBASE_CREDENTIALS:
+    import firebase_admin
+    from firebase_admin import credentials
+    try:
+        cred = credentials.Certificate(FIREBASE_CREDENTIALS)
+        firebase_admin.initialize_app(cred)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            'Firebase Admin initialization failed. Push notifications disabled.',
+        )
