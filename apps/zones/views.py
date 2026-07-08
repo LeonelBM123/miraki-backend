@@ -3,7 +3,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsTutor
+from apps.accounts.permissions import IsTutorAdminCentroOrSuperAdmin
 
 from .models import ZonaSegura
 from .serializers import (
@@ -30,15 +30,25 @@ class ZonaSeguraViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = ZonaSegura.objects.none()
-    permission_classes = [IsTutor]
+    permission_classes = [IsTutorAdminCentroOrSuperAdmin]
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return ZonaSegura.objects.none()
-        queryset = ZonaSegura.objects.filter(
-            id_tutor_propietario__id_usuario=self.request.user
-        )
+        user = self.request.user
+        role_name = getattr(getattr(user, 'id_rol', None), 'nombre_rol', None)
+        if role_name == 'AdminCentro':
+            try:
+                admin_centro = user.admin_centro
+                queryset = ZonaSegura.objects.filter(id_centro=admin_centro.id_centro)
+            except (AttributeError, Exception):
+                return ZonaSegura.objects.none()
+        elif role_name == 'SuperAdmin' or getattr(user, 'is_superuser', False):
+            queryset = ZonaSegura.objects.all()
+        else:
+            queryset = ZonaSegura.objects.filter(id_tutor_propietario__id_usuario=user)
+
         if self.action == 'list' and self.request.query_params.get('include_inactive') != 'true':
             queryset = queryset.filter(activo=True)
         return queryset.order_by('nombre')
