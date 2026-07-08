@@ -14,7 +14,7 @@ django-extensions
 cloudinary
 celery
 django-celery-beat
-redis
+redis>=5.0,<6.0
 Pillow
 gunicorn
 firebase-admin
