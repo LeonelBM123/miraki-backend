@@ -2,6 +2,9 @@ Django>=5.0,<5.3
 djangorestframework
 djangorestframework-gis
 djangorestframework-simplejwt
+channels
+channels-redis
+daphne
 psycopg2-binary
 django-environ
 django-cors-headers
@@ -14,3 +17,4 @@ django-celery-beat
 redis
 Pillow
 gunicorn
+firebase-admin

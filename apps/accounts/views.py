@@ -59,13 +59,16 @@ class LoginView(TokenObtainPairView):
     serializer_class = BitacoraTokenObtainPairSerializer
     throttle_scope = 'auth'
 
-    @method_decorator(csrf_protect)
     @extend_schema(request=BitacoraTokenObtainPairSerializer, responses={200: LoginResponseSerializer})
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         tokens = serializer.validated_data
-        response = Response({'usuario': tokens['usuario']}, status=status.HTTP_200_OK)
+        response = Response({
+            'access': tokens['access'],
+            'refresh': tokens['refresh'],
+            'usuario': tokens['usuario'],
+        }, status=status.HTTP_200_OK)
         set_auth_cookies(response, access=tokens['access'], refresh=tokens['refresh'])
         return response
 

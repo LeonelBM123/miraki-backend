@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'rest_framework_gis',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    'channels',
     'django_filters',
     'drf_spectacular',
     'django_extensions',
@@ -67,8 +68,10 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.institutions',
     'apps.children',
+    'apps.dispositivos',
     'apps.audit',
     'apps.zones',
+    'apps.alerts',
 ]
 
 MIDDLEWARE = [
@@ -83,6 +86,16 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'config.urls'
+ASGI_APPLICATION = 'config.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('127.0.0.1', 6379)],
+        },
+    },
+}
 
 TEMPLATES = [
     {
