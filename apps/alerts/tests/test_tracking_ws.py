@@ -1,6 +1,6 @@
 from asgiref.sync import async_to_sync
 from channels.testing import WebsocketCommunicator
-from django.test import TestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.accounts.models import Rol, Usuario
@@ -15,9 +15,11 @@ TEST_CHANNEL_LAYERS = {
 
 
 @override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
-class TrackingConsumerTests(TestCase):
+class TrackingConsumerTests(TransactionTestCase):
+    # TransactionTestCase: los consumers async no conviven bien con la única
+    # transacción atómica de TestCase (deja la conexión de BD cerrada entre clases).
     def setUp(self):
-        self.rol_tutor = Rol.objects.create(nombre_rol='Tutor', descripcion='Tutor')
+        self.rol_tutor, _ = Rol.objects.get_or_create(nombre_rol='Tutor', defaults={'descripcion': 'Tutor'})
         self.usuario = Usuario.objects.create_user(
             correo='tutor@example.com',
             password='Secr3t-pass',

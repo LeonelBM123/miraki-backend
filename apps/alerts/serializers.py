@@ -1,8 +1,34 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.dispositivos.models import Dispositivo
 
-from .models import Alerta, DispositivoToken
+from .models import Alerta, DispositivoToken, Posicion
+
+
+class ReportarPosicionSerializer(serializers.Serializer):
+    latitud = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-90, max_value=90)
+    longitud = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-180, max_value=180)
+    velocidad = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True, min_value=0)
+    bateria = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=100)
+    fecha_posicion = serializers.DateTimeField()
+
+    def validate_fecha_posicion(self, value):
+        now = timezone.now()
+        if value > now + timedelta(minutes=5):
+            raise serializers.ValidationError('La fecha de posición no puede estar en el futuro.')
+        if value < now - timedelta(hours=24):
+            raise serializers.ValidationError('La fecha de posición es demasiado antigua.')
+        return value
+
+
+class PosicionReportadaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Posicion
+        fields = ['id_posicion', 'latitud', 'longitud', 'velocidad', 'bateria', 'fecha_posicion']
+        read_only_fields = fields
 
 
 class AlertaReadSerializer(serializers.ModelSerializer):
@@ -59,6 +85,9 @@ class DispositivoTokenSerializer(serializers.ModelSerializer):
         model = DispositivoToken
         fields = ['id', 'id_usuario', 'id_dispositivo', 'token', 'plataforma']
         read_only_fields = ['id', 'id_usuario']
+        # El endpoint hace upsert por `token`; sin esto el UniqueValidator
+        # automático rechazaría (400) el re-registro del mismo token.
+        extra_kwargs = {'token': {'validators': []}}
 
     def validate_plataforma(self, value):
         plataforma = value.strip().lower()

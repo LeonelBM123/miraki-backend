@@ -36,3 +36,11 @@ class Nino(AuditMixin):
 
     def __str__(self):
         return self.nombre
+
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False

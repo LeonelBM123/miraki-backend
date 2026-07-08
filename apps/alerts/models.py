@@ -33,6 +33,12 @@ class Posicion(AuditMixin):
         blank=True,
         db_column='velocidad',
     )
+    bateria = models.SmallIntegerField(
+        null=True,
+        blank=True,
+        db_column='bateria',
+        help_text='Nivel de batería del dispositivo (0-100) al reportar la posición.',
+    )
     fecha_posicion = models.DateTimeField(db_column='fecha_posicion')
     fecha_recepcion = models.DateTimeField(auto_now_add=True, db_column='fecha_recepcion')
 

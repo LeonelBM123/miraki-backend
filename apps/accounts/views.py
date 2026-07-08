@@ -109,7 +109,6 @@ class MeView(APIView):
 class CookieRefreshView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    @method_decorator(csrf_protect)
     @extend_schema(request=None, responses={200: DetailResponseSerializer})
     def post(self, request):
         refresh = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME) or request.data.get('refresh')
@@ -122,11 +121,16 @@ class CookieRefreshView(APIView):
         except TokenError as exc:
             raise InvalidToken(str(exc)) from exc
 
-        response = Response({'detail': 'Token renovado correctamente.'}, status=status.HTTP_200_OK)
+        validated_data = serializer.validated_data
+        response = Response({
+            'access': validated_data.get('access'),
+            'refresh': validated_data.get('refresh'),
+            'detail': 'Token renovado correctamente.',
+        }, status=status.HTTP_200_OK)
         set_auth_cookies(
             response,
-            access=serializer.validated_data.get('access'),
-            refresh=serializer.validated_data.get('refresh'),
+            access=validated_data.get('access'),
+            refresh=validated_data.get('refresh'),
         )
         return response
 

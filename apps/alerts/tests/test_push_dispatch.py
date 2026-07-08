@@ -35,7 +35,7 @@ class SendPushNotificationTests(TestCase):
         self.assertEqual([message.token for message in messages], ['token-a', 'token-b'])
         self.assertEqual(messages[0].notification.title, '🚨 Alerta de zona')
 
-    @mock.patch('apps.alerts.services.messaging.send_each', side_effect=FirebaseError('firebase down'))
+    @mock.patch('apps.alerts.services.messaging.send_each', side_effect=FirebaseError('UNKNOWN', 'firebase down'))
     def test_send_push_logs_failure_no_raise(self, mock_send_each):
         success, failure = send_push_notification(alerta=self.alerta, tokens=self.tokens)
 

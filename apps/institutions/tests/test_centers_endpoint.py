@@ -1,10 +1,15 @@
 from django.contrib.auth import get_user_model
+from django.contrib.gis.geos import Point, Polygon
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import Rol, Tutor
+from apps.alerts.models import Posicion
 from apps.children.models import Nino
+from apps.dispositivos.models import Dispositivo
 from apps.institutions.models import AdminCentro, CentroEducativo
+from apps.zones.models import NinoZonaSegura, ZonaSegura
 
 Usuario = get_user_model()
 
@@ -78,6 +83,77 @@ class CentersEndpointTests(APITestCase):
         self.assertEqual(post.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         self.assertEqual(patch.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         self.assertEqual(delete.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_admin_can_get_own_center(self):
+        self.client.force_authenticate(self.admin_user)
+
+        response = self.client.get('/api/v1/institutions/my-center/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id_centro'], self.centro_a.pk)
+        self.assertEqual(response.data['nombre'], 'Alpha')
+
+    def test_admin_can_edit_own_center(self):
+        self.client.force_authenticate(self.admin_user)
+
+        response = self.client.patch(
+            '/api/v1/institutions/my-center/',
+            {'nombre': 'Alpha Renombrado', 'direccion': 'Nueva Direccion'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.centro_a.refresh_from_db()
+        self.assertEqual(self.centro_a.nombre, 'Alpha Renombrado')
+        self.assertEqual(self.centro_a.direccion, 'Nueva Direccion')
+
+    def test_tutor_cannot_access_my_center(self):
+        self.client.force_authenticate(self.tutor_user)
+
+        get = self.client.get('/api/v1/institutions/my-center/')
+        patch = self.client.patch('/api/v1/institutions/my-center/', {'nombre': 'X'}, format='json')
+
+        self.assertEqual(get.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(patch.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_tutor_cannot_access_institution_map(self):
+        self.client.force_authenticate(self.tutor_user)
+        response = self.client.get('/api/v1/institutions/map/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_institution_map_reports_children_and_zones(self):
+        # Zona institucional del centro del admin.
+        poligono = Polygon((
+            (-63.20, -17.80),
+            (-63.10, -17.80),
+            (-63.10, -17.70),
+            (-63.20, -17.70),
+            (-63.20, -17.80),
+        ))
+        poligono.srid = 4326
+        zona = ZonaSegura.objects.create(nombre='Perímetro Alpha', poligono=poligono, id_centro=self.centro_a, activo=True)
+
+        nino = Nino.objects.create(id_tutor=self.tutor, nombre='Centro Kid', centro=self.centro_a)
+        NinoZonaSegura.objects.create(id_nino=nino, id_zona=zona, activa=True)
+        dispositivo = Dispositivo.objects.create(id_nino=nino, imei='860000000000099', estado='vinculado', activo=True)
+        Posicion.objects.create(
+            id_dispositivo=dispositivo,
+            latitud='-17.750000',
+            longitud='-63.150000',
+            ubicacion=Point(-63.150000, -17.750000, srid=4326),
+            fecha_posicion=timezone.now(),
+        )
+
+        self.client.force_authenticate(self.admin_user)
+        response = self.client.get('/api/v1/institutions/map/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['zonas']), 1)
+        self.assertEqual(response.data['zonas'][0]['poligono']['type'], 'Polygon')
+
+        child = next(c for c in response.data['children'] if c['id_nino'] == nino.id_nino)
+        self.assertTrue(child['dentro_zona'])
+        self.assertEqual(child['latitud'], -17.75)
 
     def test_existing_children_center_flows_still_work(self):
         nino = Nino.objects.create(id_tutor=self.tutor, nombre='Mateo')

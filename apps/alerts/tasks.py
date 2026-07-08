@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.children.models import Nino
 from apps.zones.models import NinoZonaSegura, ZonaSegura
+from apps.zones.services import zona_vigente
 
 from .models import Alerta, DispositivoToken, Posicion
 from .services import send_push_notification as dispatch_push_notification
@@ -37,6 +38,7 @@ def evaluar_zonas(self):
     )
 
     alerts_created = 0
+    ahora = timezone.localtime()
     ten_minutes_ago = timezone.now() - timezone.timedelta(minutes=10)
     dispatch_push = not getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False)
 
@@ -46,7 +48,7 @@ def evaluar_zonas(self):
                 id_nino_id=child['id_nino'],
                 activa=True,
                 id_zona__activo=True,
-            ).select_related('id_zona')
+            ).select_related('id_zona').prefetch_related('id_zona__horarios')
         )
         if not zonas:
             continue
@@ -55,6 +57,10 @@ def evaluar_zonas(self):
 
         for nz in zonas:
             zona = nz.id_zona
+
+            # Skip if the zone is not under surveillance right now (schedule).
+            if not zona_vigente(zona, ahora):
+                continue
 
             # Skip if point is inside this zone
             if ZonaSegura.objects.filter(pk=zona.pk, poligono__covers=punto).exists():
@@ -86,6 +92,51 @@ def evaluar_zonas(self):
                     send_push_notification.delay(alerta.id_alerta)
 
     return f'{alerts_created} alerts created'
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+def evaluar_bateria(self, posicion_id):
+    """
+    Genera una alerta de batería baja si la posición reportada trae un nivel de
+    batería en o por debajo del umbral configurado. Aplica dedup por niño para no
+    repetir la alerta con cada reporte mientras la batería siga baja.
+    """
+    umbral = getattr(settings, 'BATERIA_UMBRAL_ALERTA', 15)
+    dedup_horas = getattr(settings, 'BATERIA_DEDUP_HORAS', 6)
+
+    try:
+        posicion = Posicion.objects.select_related('id_dispositivo__id_nino').get(pk=posicion_id)
+    except Posicion.DoesNotExist:
+        return 'position not found'
+
+    if posicion.bateria is None or posicion.bateria > umbral:
+        return 'battery ok'
+
+    nino = posicion.id_dispositivo.id_nino
+    desde = timezone.now() - timezone.timedelta(hours=dedup_horas)
+    if Alerta.objects.filter(
+        id_nino=nino,
+        tipo=Alerta.TipoAlerta.BATERIA_BAJA,
+        fecha_alerta__gte=desde,
+    ).exists():
+        return 'battery alert deduped'
+
+    alerta = Alerta.objects.create(
+        id_nino=nino,
+        id_posicion=posicion,
+        tipo=Alerta.TipoAlerta.BATERIA_BAJA,
+    )
+
+    dispatch_push = not getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False)
+    if dispatch_push:
+        tokens = DispositivoToken.objects.filter(
+            id_usuario__tutor__ninos__id_nino=nino.id_nino,
+            activo=True,
+        ).distinct()
+        if tokens.exists():
+            send_push_notification.delay(alerta.id_alerta)
+
+    return f'battery alert {alerta.id_alerta} created'
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)

@@ -70,6 +70,17 @@ def atender_alerta(*, alerta, user, request=None):
     return alerta
 
 
+def _push_content(alerta):
+    """Devuelve (título, cuerpo) del push según el tipo de alerta."""
+    nombre = alerta.id_nino.nombre
+    if alerta.tipo == Alerta.TipoAlerta.BATERIA_BAJA:
+        return '🔋 Batería baja', f'La batería del dispositivo de {nombre} está baja.'
+    if alerta.tipo == Alerta.TipoAlerta.SOS:
+        return '🆘 SOS', f'{nombre} activó una alerta SOS.'
+    zona = alerta.id_zona.nombre if alerta.id_zona else 'una zona segura'
+    return '🚨 Alerta de zona', f'{nombre} salió de {zona}.'
+
+
 def send_push_notification(*, alerta, tokens):
     """Send FCM push notification for an alert to a list of device tokens."""
     token_list = list(tokens)
@@ -77,12 +88,12 @@ def send_push_notification(*, alerta, tokens):
         return 0, 0
 
     messages = []
-    body = f'{alerta.id_nino.nombre} salió de {alerta.id_zona.nombre if alerta.id_zona else "una zona segura"}'
+    title, body = _push_content(alerta)
     for token_obj in token_list:
         messages.append(
             messaging.Message(
                 notification=messaging.Notification(
-                    title='🚨 Alerta de zona',
+                    title=title,
                     body=body,
                 ),
                 data={

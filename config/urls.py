@@ -8,6 +8,7 @@ urlpatterns = [
     path('api/v1/auth/', include('apps.accounts.auth_urls')),
     path('api/v1/accounts/', include('apps.accounts.urls')),
     path('api/v1/children/', include('apps.children.urls')),
+    path('api/v1/', include('apps.pareo.urls')),
     path('api/v1/institutions/', include('apps.institutions.urls')),
     path('api/v1/', include('apps.dispositivos.urls')),
     path('api/v1/', include('apps.alerts.urls')),

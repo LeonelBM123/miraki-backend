@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
 from apps.accounts.models import Tutor
@@ -7,6 +8,30 @@ from apps.audit.models import Bitacora
 from apps.audit.services import record_action, serialize_instance
 
 from .models import ZonaSegura, HorarioZona, NinoZonaSegura
+
+
+def zona_vigente(zona, momento=None):
+    """
+    Indica si la zona está bajo vigilancia en `momento` según sus horarios.
+
+    Regla de negocio (CLAUDE.md): una zona sin registros en `HorarioZona` se
+    interpreta como vigente 24/7. Si tiene franjas definidas, está vigente sólo
+    dentro de una franja activa cuyo día y hora coincidan con el momento local.
+
+    Usa `zona.horarios.all()`; precargar con `prefetch_related('id_zona__horarios')`
+    para evitar consultas N+1 al evaluarla en bucle.
+    """
+    momento = momento or timezone.localtime()
+    horarios = list(zona.horarios.all())
+    if not horarios:
+        return True  # Sin franjas definidas => vigilancia 24/7.
+
+    dia = momento.isoweekday()  # 1=Lunes ... 7=Domingo, igual que dia_semana.
+    ahora = momento.time()
+    return any(
+        h.activo and h.dia_semana == dia and h.hora_inicio <= ahora <= h.hora_fin
+        for h in horarios
+    )
 
 
 def get_owner_for_user(user):

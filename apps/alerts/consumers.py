@@ -10,8 +10,9 @@ Usuario = get_user_model()
 
 class TrackingConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        self.tutor_id = None
         self.group_name = None
+        self.tutor_id = None
+        self.nino_id = None
 
         query_params = parse_qs(self.scope.get('query_string', b'').decode())
         token = query_params.get('token', [None])[0]
@@ -19,26 +20,51 @@ class TrackingConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4401)
             return
 
+        if await self._connect_with_tutor_jwt(token):
+            return
+
+        if await self._connect_with_pairing_token(token):
+            return
+
+        await self.close(code=4401)
+
+    async def _connect_with_tutor_jwt(self, token):
         try:
             access = AccessToken(token)
-            user = await database_sync_to_async(
-                Usuario.objects.select_related('id_rol').get
-            )(id_usuario=access['user_id'])
-
-            if user.id_rol.nombre_rol != 'Tutor':
-                await self.close(code=4403)
-                return
-
-            self.tutor_id = user.id_usuario
-            self.group_name = f'tracking-{self.tutor_id}'
-
-            await self.channel_layer.group_add(self.group_name, self.channel_name)
-            await self.accept()
+            user_id = access['user_id']
+            user = await database_sync_to_async(Usuario.objects.select_related('id_rol').get)(id_usuario=user_id)
         except Exception:
-            await self.close(code=4401)
+            return False
+
+        if user.id_rol.nombre_rol != 'Tutor':
+            return False
+
+        self.tutor_id = user.id_usuario
+        self.group_name = f'tracking-{self.tutor_id}'
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        return True
+
+    async def _connect_with_pairing_token(self, token):
+        try:
+            access = AccessToken(token)
+            if access.get('scope') != 'kid_device':
+                return False
+
+            nino_id = access.get('nino_id')
+            if not nino_id:
+                return False
+        except Exception:
+            return False
+
+        self.nino_id = int(nino_id)
+        self.group_name = f'tracking-{self.nino_id}'
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        return True
 
     async def disconnect(self, close_code):
-        if self.tutor_id and self.group_name:
+        if self.group_name:
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def receive_json(self, content):

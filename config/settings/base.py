@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'apps.audit',
     'apps.zones',
     'apps.alerts',
+    'apps.pareo',
 ]
 
 MIDDLEWARE = [
@@ -90,10 +91,7 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
-        },
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
     },
 }
 
@@ -151,6 +149,13 @@ REST_FRAMEWORK = {
         'anon': env('THROTTLE_ANON_RATE', default='5/min'),
         'user': env('THROTTLE_USER_RATE', default='100/hour'),
         'auth': env('THROTTLE_AUTH_RATE', default='10/min'),
+        # Dispositivo del niño: reporta ubicación y hace polling de estado con
+        # frecuencia; comparte un bucket propio y generoso en vez del 'user'
+        # global (100/hour), que el polling de estado por sí solo agotaba.
+        'kid_device': env('THROTTLE_KID_RATE', default='60/min'),
+        # Mapa del tutor: hace polling de la última posición cada 30 s (~120/hora),
+        # que también superaba el 'user' de 100/hour. Bucket dedicado y generoso.
+        'tracking': env('THROTTLE_TRACKING_RATE', default='60/min'),
     },
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -213,10 +218,10 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
 }
 
-CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 # Si no se define CSRF_TRUSTED_ORIGINS, hereda automáticamente los orígenes de CORS
-CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=CORS_ALLOWED_ORIGINS)
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost', 'http://localhost:5173', 'http://localhost:80', 'http://192.168.0.13:8000'])
 
 JWT_ACCESS_COOKIE_NAME = env('JWT_ACCESS_COOKIE_NAME', default='miraki_access')
 JWT_REFRESH_COOKIE_NAME = env('JWT_REFRESH_COOKIE_NAME', default='miraki_refresh')
@@ -232,3 +237,8 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+
+# Alertas de batería baja: umbral (%) y ventana de dedup (horas) para no repetir
+# la alerta con cada reporte mientras la batería siga baja.
+BATERIA_UMBRAL_ALERTA = env.int('BATERIA_UMBRAL_ALERTA', default=15)
+BATERIA_DEDUP_HORAS = env.int('BATERIA_DEDUP_HORAS', default=6)

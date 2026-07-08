@@ -229,3 +229,31 @@ class AlertaFlowsTests(TestCase):
 
         self.assertIs(alerta_match.func.cls, AlertaViewSet)
         self.assertIs(token_match.func.cls, DispositivoTokenViewSet)
+
+    def test_list_filter_by_date_range(self):
+        vieja = self._build_alert(self.tutor, 'vieja', Alerta.TipoAlerta.SALIDA_ZONA)
+        Alerta.objects.filter(pk=vieja.id_alerta).update(
+            fecha_alerta=timezone.now() - timezone.timedelta(days=10),
+        )
+
+        self.client.force_authenticate(user=self.usuario)
+        hoy = timezone.localtime().date().isoformat()
+        response = self.client.get(f'/api/v1/alertas/?desde={hoy}')
+
+        self.assertEqual(response.status_code, 200)
+        ids = {row['id_alerta'] for row in response.data['results']}
+        self.assertIn(self.alerta.id_alerta, ids)
+        self.assertNotIn(vieja.id_alerta, ids)
+
+    def test_reporte_csv_attachment_only_own_alerts(self):
+        self.client.force_authenticate(user=self.usuario)
+
+        response = self.client.get('/api/v1/alertas/reporte/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/csv', response['Content-Type'])
+        self.assertIn('attachment; filename="reporte_alertas_', response['Content-Disposition'])
+        body = response.content.decode('utf-8')
+        self.assertIn('Fecha,Nino,Tipo,Zona,Estado', body)
+        self.assertIn(self.alerta.id_nino.nombre, body)
+        self.assertNotIn(self.alerta_otro.id_nino.nombre, body)
