@@ -9,6 +9,19 @@ from apps.audit.services import record_action, serialize_instance
 from .models import ZonaSegura, HorarioZona, NinoZonaSegura
 
 
+def get_owner_for_user(user):
+    role_name = getattr(getattr(user, 'id_rol', None), 'nombre_rol', None)
+    if role_name == 'AdminCentro':
+        try:
+            return None, user.admin_centro.id_centro
+        except (AttributeError, Exception) as exc:
+            raise PermissionDenied('El usuario autenticado no tiene perfil AdminCentro o no está asignado a un centro.') from exc
+    try:
+        return user.tutor, None
+    except (AttributeError, Tutor.DoesNotExist) as exc:
+        raise PermissionDenied('El usuario autenticado no tiene perfil Tutor ni AdminCentro.') from exc
+
+
 def get_tutor_for_user(user):
     try:
         return user.tutor
@@ -18,13 +31,13 @@ def get_tutor_for_user(user):
 
 @transaction.atomic
 def create_zona(*, user, data, request=None):
-    tutor = get_tutor_for_user(user)
+    tutor, centro = get_owner_for_user(user)
     zona = ZonaSegura.objects.create(
         nombre=data['nombre'],
         poligono=data['poligono'],
         activo=True,
         id_tutor_propietario=tutor,
-        id_centro=None,
+        id_centro=centro,
         creado_por=user,
         modificado_por=user,
     )
@@ -122,14 +135,25 @@ def sync_horarios_zona(*, zona, user, horarios_data, request=None):
     return nuevos_horarios
 
 
-@transaction.atomic
-def vincular_nino_zona(*, zona, id_nino, user, request=None):
+def get_nino_for_user(user, id_nino):
     from apps.children.models import Nino
+    role_name = getattr(getattr(user, 'id_rol', None), 'nombre_rol', None)
+    if role_name == 'AdminCentro':
+        try:
+            admin_centro = user.admin_centro
+            return Nino.objects.get(pk=id_nino, centro=admin_centro.id_centro)
+        except (AttributeError, Nino.DoesNotExist) as exc:
+            raise PermissionDenied('El niño especificado no existe o no pertenece a tu centro educativo.') from exc
     tutor = get_tutor_for_user(user)
     try:
-        nino = Nino.objects.get(pk=id_nino, id_tutor=tutor)
+        return Nino.objects.get(pk=id_nino, id_tutor=tutor)
     except Nino.DoesNotExist as exc:
         raise PermissionDenied('El niño especificado no existe o no pertenece a tu cuenta.') from exc
+
+
+@transaction.atomic
+def vincular_nino_zona(*, zona, id_nino, user, request=None):
+    nino = get_nino_for_user(user, id_nino)
 
     asoc, created = NinoZonaSegura.objects.get_or_create(
         id_nino=nino,
@@ -168,12 +192,7 @@ def vincular_nino_zona(*, zona, id_nino, user, request=None):
 
 @transaction.atomic
 def desactivar_nino_zona(*, zona, id_nino, user, request=None):
-    from apps.children.models import Nino
-    tutor = get_tutor_for_user(user)
-    try:
-        nino = Nino.objects.get(pk=id_nino, id_tutor=tutor)
-    except Nino.DoesNotExist as exc:
-        raise PermissionDenied('El niño especificado no existe o no pertenece a tu cuenta.') from exc
+    nino = get_nino_for_user(user, id_nino)
 
     try:
         asoc = NinoZonaSegura.objects.get(id_nino=nino, id_zona=zona)
