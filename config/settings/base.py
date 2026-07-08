@@ -42,6 +42,10 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 GDAL_LIBRARY_PATH = env('GDAL_LIBRARY_PATH', default=None)
 GEOS_LIBRARY_PATH = env('GEOS_LIBRARY_PATH', default=None)
 
+CLOUDINARY_CLOUD_NAME = env('CLOUDINARY_CLOUD_NAME', default='')
+CLOUDINARY_API_KEY = env('CLOUDINARY_API_KEY', default='')
+CLOUDINARY_API_SECRET = env('CLOUDINARY_API_SECRET', default='')
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

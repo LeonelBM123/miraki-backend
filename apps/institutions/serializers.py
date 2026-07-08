@@ -10,6 +10,13 @@ class CentroEducativoResponseSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class CentroEducativoSelectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CentroEducativo
+        fields = ['id_centro', 'nombre', 'direccion']
+        read_only_fields = fields
+
+
 class AdminCentroResponseSerializer(serializers.ModelSerializer):
     centro = CentroEducativoResponseSerializer(source='id_centro', read_only=True)
 
