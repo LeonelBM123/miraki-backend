@@ -1,12 +1,12 @@
 # Miraki — URLs del sistema
 
-> AWS: `44.195.68.214:8000` | Local: `localhost:8000`
+> API: `http://44.195.68.214:8000` | Web: `http://44.195.68.214:5173` | WS: `ws://44.195.68.214:8000/ws/tracking/`
 
 ---
 
 ## 🌐 Backend API REST
 
-Base: `http://44.195.68.214:8000/api/v1/`
+Base: `http://44.195.68.214:8000/api/v1/` | Local: `http://localhost:8000/api/v1/`
 
 ### Autenticación (`/api/v1/auth/`)
 
@@ -213,3 +213,56 @@ Base API: `http://44.195.68.214:8000/api/v1/` (LAN: `http://192.168.0.13:8000/ap
 | JWT (refresh) | `Authorization: Bearer <token>` o cookie `miraki_refresh` | Web, Mobile |
 | Pairing Token | `X-Kid-Token: <token>` | miraki_kid |
 | WebSocket | `?token=<jwt>` (query string) | Web, Mobile |
+
+---
+
+## 🚀 Despliegue AWS EC2
+
+| Dato | Valor |
+|------|-------|
+| **IP Pública** | `44.195.68.214` |
+| **Región** | `us-east-1` |
+| **Instancia** | `i-000df7135ce9ffcce` (t3.micro) |
+| **SO** | Amazon Linux 2023 |
+| **Key Pair** | `miraki-key` |
+
+### Servicios Docker
+
+| Contenedor | Puerto | Estado |
+|-----------|--------|--------|
+| `miraki-web-1` (Daphne ASGI) | 8000 | HTTP + WebSocket |
+| `miraki-db-1` (PostgreSQL + PostGIS) | 5432 | Healthy |
+| `miraki-redis-1` | 6379 | Healthy |
+
+### Comandos útiles
+
+```bash
+# SSH
+ssh -i miraki-key.pem ec2-user@44.195.68.214
+
+# Logs
+sudo docker logs miraki-web-1 --tail 50
+
+# Restart
+sudo docker-compose -f ~/miraki/docker-compose.yml restart web
+
+# Frontend (Vite dev)
+cd ~/sig-front && npx vite --host 0.0.0.0 --port 5173
+```
+
+---
+
+## 👤 Usuarios de prueba (seed)
+
+| Email | Password | Rol | Niños |
+|-------|----------|-----|-------|
+| `maria@test.com` | `Test1234!` | Tutor | Pedro (id=1), Lola (id=2) |
+
+**Datos creados:**
+- Zona segura "Colegio" con polígono en Santa Cruz centro
+- Ambos niños vinculados a la zona Colegio
+
+**Crear más datos:**
+```bash
+cat seed.py | sudo docker exec -i miraki-web-1 python manage.py shell
+```
