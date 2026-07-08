@@ -135,3 +135,31 @@ class DispositivoToken(AuditMixin):
 
     def __str__(self):
         return f'{self.id_usuario_id} - {self.plataforma}'
+
+
+class NinoZonaEstado(models.Model):
+    """Tracks whether a child is currently inside or outside a specific zone.
+    Updated on every position report to detect entry/exit transitions."""
+
+    id_nino = models.ForeignKey(
+        Nino, on_delete=models.CASCADE, db_column='id_nino', related_name='estados_zona'
+    )
+    id_zona = models.ForeignKey(
+        ZonaSegura, on_delete=models.CASCADE, db_column='id_zona', related_name='estados_nino'
+    )
+    dentro = models.BooleanField(
+        db_column='dentro',
+        help_text='True if the child was inside the zone at the last evaluation.',
+    )
+    fecha_actualizacion = models.DateTimeField(auto_now=True, db_column='fecha_actualizacion')
+
+    class Meta:
+        db_table = 'nino_zona_estado'
+        unique_together = [('id_nino', 'id_zona')]
+        indexes = [
+            models.Index(fields=['id_nino', 'dentro'], name='ix_nze_nino_dentro'),
+        ]
+
+    def __str__(self):
+        estado = 'dentro' if self.dentro else 'fuera'
+        return f'{self.id_nino.nombre} - {self.id_zona.nombre}: {estado}'

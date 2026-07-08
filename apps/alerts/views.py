@@ -24,8 +24,9 @@ from .serializers import (
     PosicionReportadaSerializer,
     ReportarPosicionSerializer,
 )
-from .tasks import evaluar_bateria, evaluar_zonas
+from .tasks import evaluar_bateria
 from .services import atender_alerta
+from .zone_evaluation import evaluar_zona_nino
 
 logger = logging.getLogger(__name__)
 
@@ -243,9 +244,16 @@ class ReportarPosicionView(APIView):
         )
 
         try:
-            evaluar_zonas.delay()
+            result = evaluar_zona_nino(nino=request.user, posicion=posicion)
+            logger.info(
+                'Zone eval for nino %s: %d zones, %d exits, %d entries',
+                request.user.id_nino,
+                result['evaluated'],
+                result['exits'],
+                result['entries'],
+            )
         except Exception as exc:
-            logger.warning('Zone evaluation dispatch failed after child position report: %s', exc)
+            logger.warning('Zone evaluation failed after child position report: %s', exc)
         if posicion.bateria is not None:
             try:
                 evaluar_bateria.delay(posicion.id_posicion)
