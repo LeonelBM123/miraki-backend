@@ -61,6 +61,53 @@ def update_nino(*, nino, user, data, request=None):
 
 
 @transaction.atomic
+def assign_nino_center(*, nino, centro, user, request=None):
+    locked = Nino.objects.select_for_update().get(pk=nino.pk)
+    old_centro_id = locked.centro_id
+    new_centro_id = centro.pk
+
+    if old_centro_id == new_centro_id:
+        return locked
+
+    locked.centro = centro
+    locked.modificado_por = user
+    locked.save(update_fields=['centro', 'modificado_por', 'fecha_modificacion'])
+    record_action(
+        table='nino',
+        record_id=locked.pk,
+        operation=Bitacora.Operacion.UPDATE,
+        actor=user,
+        ip=get_client_ip(request),
+        before={'centro': old_centro_id},
+        after={'centro': new_centro_id},
+    )
+    return locked
+
+
+@transaction.atomic
+def remove_nino_center(*, nino, user, request=None):
+    locked = Nino.objects.select_for_update().get(pk=nino.pk)
+    old_centro_id = locked.centro_id
+
+    if old_centro_id is None:
+        return locked
+
+    locked.centro = None
+    locked.modificado_por = user
+    locked.save(update_fields=['centro', 'modificado_por', 'fecha_modificacion'])
+    record_action(
+        table='nino',
+        record_id=locked.pk,
+        operation=Bitacora.Operacion.UPDATE,
+        actor=user,
+        ip=get_client_ip(request),
+        before={'centro': old_centro_id},
+        after={'centro': None},
+    )
+    return locked
+
+
+@transaction.atomic
 def set_nino_active(*, nino, user, active, request=None):
     locked = Nino.objects.select_for_update().get(pk=nino.pk)
     before = serialize_instance(locked)

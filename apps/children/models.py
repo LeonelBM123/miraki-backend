@@ -2,6 +2,7 @@ from django.db import models
 
 from apps.accounts.models import Tutor
 from apps.common.models import AuditMixin
+from apps.institutions.models import CentroEducativo
 
 
 class Nino(AuditMixin):
@@ -15,12 +16,21 @@ class Nino(AuditMixin):
         db_column='id_tutor',
         related_name='ninos',
     )
+    centro = models.ForeignKey(
+        CentroEducativo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='id_centro',
+        related_name='ninos',
+    )
     activo = models.BooleanField(default=True, db_column='activo')
 
     class Meta:
         db_table = 'nino'
         indexes = [
             models.Index(fields=['id_tutor'], name='ix_nino_tutor'),
+            models.Index(fields=['centro'], name='ix_nino_centro'),
         ]
 
     def __str__(self):

@@ -1,7 +1,16 @@
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.institutions.models import CentroEducativo
+
 from .models import Nino
+
+
+class NinoCentroReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CentroEducativo
+        fields = ['id_centro', 'nombre']
+        read_only_fields = fields
 
 
 class NinoCreateRequestSerializer(serializers.ModelSerializer):
@@ -32,10 +41,22 @@ class NinoUpdateRequestSerializer(serializers.ModelSerializer):
 
 
 class NinoReadSerializer(serializers.ModelSerializer):
+    centro = NinoCentroReadSerializer(read_only=True)
+
     class Meta:
         model = Nino
         fields = [
             'id_nino', 'nombre', 'fecha_nacimiento', 'foto_url',
-            'activo', 'fecha_creacion', 'fecha_modificacion',
+            'activo', 'centro', 'fecha_creacion', 'fecha_modificacion',
         ]
         read_only_fields = fields
+
+
+class AssignCenterSerializer(serializers.Serializer):
+    centro_id = serializers.IntegerField(required=True)
+
+    def validate_centro_id(self, value):
+        try:
+            return CentroEducativo.objects.get(pk=value)
+        except CentroEducativo.DoesNotExist as exc:
+            raise serializers.ValidationError('El centro educativo especificado no existe.') from exc

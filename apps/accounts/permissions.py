@@ -30,3 +30,15 @@ class IsAdminCentro(BasePermission):
 
     def has_permission(self, request, view):
         return get_role_name(request.user) == 'AdminCentro'
+
+
+class IsTutorAdminCentroOrSuperAdmin(BasePermission):
+    message = 'Se requiere rol Tutor, AdminCentro o SuperAdmin.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        return get_role_name(user) in {'Tutor', 'AdminCentro', 'SuperAdmin'} or bool(
+            getattr(user, 'is_superuser', False)
+        )
