@@ -114,13 +114,8 @@ def _handle_entry(*, nino, zona, posicion):
 
 
 def _dispatch_push_for_alerta(alerta):
-    """Queue FCM push for an alert via Celery if available, or run inline."""
-    try:
-        from .tasks import send_push_notification
-        send_push_notification.delay(alerta.id_alerta)
-    except Exception:
-        # Celery not available — run inline
-        _send_push_inline(alerta)
+    """Send FCM push for an alert. Runs inline since Celery worker is not available."""
+    _send_push_inline(alerta)
 
 
 def _send_push_inline(alerta):
